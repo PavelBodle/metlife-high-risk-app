@@ -1,0 +1,87 @@
+{
+  "age_outliers_capped": 100,
+  "n_rows": 60000,
+  "n_cols": 9,
+  "missing": {
+    "annual_income": 3000
+  },
+  "target_pct_high_risk": 45.68,
+  "income_skew": 0.037,
+  "income_mean": 5009.2,
+  "income_median": 5006.9,
+  "claims_skew": 2.002,
+  "health_ttest": {
+    "t": 57.08,
+    "p": 0.0,
+    "mean_low": 56.27,
+    "mean_high": 43.14
+  },
+  "chi_square": {
+    "policy_type": {
+      "chi2": 1.12,
+      "p": 0.5707874316106891
+    },
+    "has_chronic_disease": {
+      "chi2": 430.83,
+      "p": 1.072976953781364e-95
+    }
+  },
+  "corr_with_target": {
+    "age": 0.428,
+    "annual_income": -0.004,
+    "health_score": -0.227,
+    "has_chronic_disease": 0.085,
+    "past_claims_amount": 0.001,
+    "bmi": 0.005
+  },
+  "vif": {
+    "age": 1.0,
+    "annual_income": 1.0,
+    "health_score": 1.0,
+    "has_chronic_disease": 1.0,
+    "past_claims_amount": 1.0,
+    "bmi": 1.0
+  },
+  "model_results": {
+    "Logistic Regression": {
+      "AUROC": 0.7803,
+      "PR_AUC": 0.7369,
+      "F1": 0.6739,
+      "Accuracy": 0.7108
+    },
+    "Random Forest": {
+      "AUROC": 0.7624,
+      "PR_AUC": 0.7105,
+      "F1": 0.6657,
+      "Accuracy": 0.7015
+    },
+    "Gradient Boosting": {
+      "AUROC": 0.7796,
+      "PR_AUC": 0.737,
+      "F1": 0.669,
+      "Accuracy": 0.706
+    }
+  },
+  "best_model": "Logistic Regression",
+  "odds_ratios": {
+    "age": 2.905,
+    "health_score": 0.552,
+    "has_chronic_disease": 1.241,
+    "policy_type_Premium": 1.012,
+    "annual_income": 0.989,
+    "bmi": 1.01,
+    "policy_type_Platinum": 0.992,
+    "past_claims_amount": 1.007
+  },
+  "permutation_importance": {
+    "age": 0.2125,
+    "health_score": 0.0653,
+    "has_chronic_disease": 0.0076,
+    "bmi": 0.0,
+    "past_claims_amount": 0.0,
+    "policy_type": 0.0,
+    "annual_income": -0.0
+  },
+  "cost_optimal_threshold": 0.08,
+  "cost_ratio_fn_fp": "10:1"
+}
