@@ -9,6 +9,9 @@ __pycache__/
 # Node (build tooling for docx/pptx)
 node_modules/
 package-lock.json
+build_docx.js
+build_pptx.js
+package.json
 
 # OS
 .DS_Store
