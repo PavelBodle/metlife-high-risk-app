@@ -7,6 +7,7 @@ Run locally:   streamlit run app.py
 Deploy:        push to GitHub -> share.streamlit.io -> app.py
 GenAI (optional): add GROQ_API_KEY in Streamlit Secrets. Works without it too.
 """
+import base64
 import json
 import time
 from pathlib import Path
@@ -26,9 +27,49 @@ st.set_page_config(page_title="MetLife • High-Risk Intelligence",
                    initial_sidebar_state="expanded")
 
 PRIMARY = "#0090DA"   # MetLife blue
-GREEN = "#00A758"
+GREEN = "#00A758"     # MetLife green
+DARKBLUE = "#0061A0"  # MetLife deep blue
+NAVY = "#12283A"
 RISK = "#E4002B"
+INK = "#1B2A38"
 DATA_PATH = "insurance_test_data.csv"
+LOGO_PATH = "data/Metlife_logo.jpg"
+
+
+# ---- MetLife brand styling: rectangular tab-buttons + branded callouts ----
+st.markdown(
+    f"""<style>
+    /* Tabs styled as rectangular buttons */
+    .stTabs [data-baseweb="tab-list"] {{ gap: 8px; border-bottom: none; }}
+    .stTabs [data-baseweb="tab"] {{
+        background: #F0F6FB; border: 1px solid #D6E4F0; border-radius: 8px;
+        padding: 9px 18px; font-weight: 600; color: {INK};
+    }}
+    .stTabs [data-baseweb="tab"]:hover {{ background: #E3EFF9; color: {DARKBLUE}; }}
+    .stTabs [aria-selected="true"] {{
+        background: {PRIMARY}; color: #FFFFFF !important; border-color: {PRIMARY};
+        box-shadow: 0 2px 6px rgba(0,144,218,.35);
+    }}
+    .stTabs [data-baseweb="tab-highlight"], .stTabs [data-baseweb="tab-border"] {{ display: none; }}
+    </style>""",
+    unsafe_allow_html=True,
+)
+
+
+@st.cache_data(show_spinner=False)
+def logo_b64():
+    p = Path(LOGO_PATH)
+    return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
+
+
+def met_callout(html_body, bg="#EAF4FB", accent=PRIMARY):
+    """Branded insight box (MetLife colours). html_body may contain <b>/<br>."""
+    st.markdown(
+        f'<div style="background:{bg};border-left:5px solid {accent};'
+        f'border-radius:8px;padding:12px 16px;color:{INK};font-size:13.5px;'
+        f'line-height:1.5;">{html_body}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -156,8 +197,8 @@ def shap_waterfall_fig(profile: dict):
     fig = go.Figure(go.Waterfall(
         orientation="v", measure=measures, x=labels, y=values,
         connector={"line": {"color": "#B8C4CE"}},
-        increasing={"marker": {"color": RISK}},     # pushes risk up
-        decreasing={"marker": {"color": PRIMARY}},   # pushes risk down
+        increasing={"marker": {"color": RISK}},      # pushes risk up
+        decreasing={"marker": {"color": GREEN}},     # pushes risk down
         totals={"marker": {"color": "#12283A"}},
         textposition="outside",
         text=[f"{v:+.2f}" if m == "relative" else f"{v:.2f}"
@@ -213,19 +254,109 @@ def apply_customer(cid: int) -> bool:
     return True
 
 
+def assistant_visual(df, question: str):
+    """Return ('table', dataframe) or ('chart', plotly_fig) to accompany a chat
+    answer, or (None, None). df is expected to carry a 'risk_score' column."""
+    import re as _re
+    q = question.lower()
+
+    # --- top-N customers -> real data table -------------------------------
+    list_kw = any(w in q for w in ["top", "highest", "riskiest", "list", "show",
+                                   "who", "which", "name", "give me"])
+    if "customer" in q and list_kw:
+        m = _re.search(r"\d+", q)
+        n = min(int(m.group()) if m else 5, 20)
+        by_score = "risk_score" in df.columns
+        top = df.nlargest(n, "risk_score") if by_score else df[df.is_high_risk == 1].head(n)
+        t = top[["customer_id", "age", "health_score", "has_chronic_disease",
+                 "policy_type"]].copy()
+        t["health_score"] = t["health_score"].round(0).astype(int)
+        t["has_chronic_disease"] = t["has_chronic_disease"].map({1: "Yes", 0: "No"})
+        if by_score:
+            t["risk_%"] = (top["risk_score"] * 100).round(1)
+        t = t.rename(columns={"customer_id": "Customer ID", "age": "Age",
+                              "health_score": "Health", "has_chronic_disease": "Chronic",
+                              "policy_type": "Policy", "risk_%": "Model risk %"})
+        return "table", t.reset_index(drop=True)
+
+    # --- policy comparison -> bar -----------------------------------------
+    if "policy" in q or "platinum" in q or "basic" in q or "premium" in q:
+        g = (df.groupby("policy_type")["is_high_risk"].mean().mul(100)
+             .round(1).reset_index())
+        g.columns = ["policy_type", "high_risk_rate"]
+        fig = px.bar(g, x="policy_type", y="high_risk_rate", text_auto=True,
+                     color="policy_type",
+                     color_discrete_sequence=[PRIMARY, GREEN, DARKBLUE])
+        fig.update_layout(title="High-risk rate by policy type (%)", showlegend=False,
+                          height=320, yaxis_title="high-risk %", xaxis_title="",
+                          margin=dict(t=40, b=10))
+        return "chart", fig
+
+    # --- drivers / factors -> importance bar ------------------------------
+    if any(w in q for w in ["factor", "driver", "important", "matter", "influence", "why"]):
+        imp = summary.get("permutation_importance", {})
+        items = sorted(imp.items(), key=lambda kv: kv[1], reverse=True)
+        d = pd.DataFrame(items, columns=["feature", "importance"])
+        fig = px.bar(d[::-1], x="importance", y="feature", orientation="h",
+                     color="importance", color_continuous_scale=[GREEN, PRIMARY])
+        fig.update_layout(title="Feature importance (drop in AUROC when shuffled)",
+                          coloraxis_showscale=False, height=340, yaxis_title="",
+                          xaxis_title="importance", margin=dict(t=40, b=10))
+        return "chart", fig
+
+    # --- age bands -> bar --------------------------------------------------
+    if any(w in q for w in ["age", "old", "young", "senior", "60"]):
+        rows = []
+        for lo, hi in [(18, 40), (40, 60), (60, 100)]:
+            g = df[(df.age >= lo) & (df.age < hi)]
+            if len(g):
+                rows.append((f"{lo}–{hi}", round(g.is_high_risk.mean() * 100, 1)))
+        d = pd.DataFrame(rows, columns=["age_band", "high_risk_rate"])
+        fig = px.bar(d, x="age_band", y="high_risk_rate", text_auto=True,
+                     color_discrete_sequence=[PRIMARY])
+        fig.update_layout(title="High-risk rate by age band (%)", height=320,
+                          yaxis_title="high-risk %", xaxis_title="", margin=dict(t=40, b=10))
+        return "chart", fig
+
+    # --- chronic disease -> bar -------------------------------------------
+    if "chronic" in q or "disease" in q:
+        g = df.groupby("has_chronic_disease")["is_high_risk"].mean().mul(100)
+        d = pd.DataFrame({"group": ["No chronic disease", "Has chronic disease"],
+                          "high_risk_rate": [round(g.get(0, 0), 1), round(g.get(1, 0), 1)]})
+        fig = px.bar(d, x="group", y="high_risk_rate", text_auto=True, color="group",
+                     color_discrete_sequence=[PRIMARY, RISK])
+        fig.update_layout(title="High-risk rate by chronic disease (%)", showlegend=False,
+                          height=320, yaxis_title="high-risk %", xaxis_title="",
+                          margin=dict(t=40, b=10))
+        return "chart", fig
+
+    return None, None
+
+
 # ---------------------------------------------------------------------------
-# Header
+# Header (with MetLife logo, left)
 # ---------------------------------------------------------------------------
+_logo = logo_b64()
+_logo_html = (
+    f'<div style="background:#FFFFFF;border-radius:10px;padding:10px 14px;'
+    f'display:flex;align-items:center;flex:0 0 auto;">'
+    f'<img src="data:image/jpeg;base64,{_logo}" style="height:44px;"/></div>'
+    if _logo else ""
+)
 st.markdown(
-    f"""<div style="background:linear-gradient(90deg,{PRIMARY},{GREEN});
-         padding:20px 26px;border-radius:12px;margin-bottom:12px;">
-         <h1 style="color:white;margin:0;font-size:30px;">❇️ High-Risk Customer Intelligence</h1>
+    f"""<div style="background:linear-gradient(90deg,{DARKBLUE},{PRIMARY} 55%,{GREEN});
+         padding:18px 24px;border-radius:12px;margin-bottom:12px;
+         display:flex;align-items:center;gap:20px;">
+         {_logo_html}
+         <div>
+         <h1 style="color:white;margin:0;font-size:29px;">High-Risk Customer Intelligence</h1>
          <p style="color:white;margin:6px 0 0;opacity:.95;font-size:15px;font-weight:600;">
          Predict • Explain • Decide with Confidence
-         <span style="opacity:.75;font-weight:400;">&nbsp;|&nbsp;
+         <span style="opacity:.78;font-weight:400;">&nbsp;|&nbsp;
          Explainable Machine Learning + GenAI Decision Assistant</span></p>
-         <p style="color:white;margin:4px 0 0;opacity:.8;font-size:12.5px;">
-         Developed by Pavel Bodle &nbsp;|&nbsp; Senior AI Engineer</p></div>""",
+         <p style="color:white;margin:4px 0 0;opacity:.82;font-size:12.5px;">
+         Developed by Pavel Bodle &nbsp;|&nbsp; Senior AI Engineer</p>
+         </div></div>""",
     unsafe_allow_html=True,
 )
 
@@ -271,6 +402,21 @@ with st.sidebar:
 
     st.divider()
     st.subheader("👤 Applicant profile")
+
+    with st.expander("ℹ️ How to use this panel", expanded=False):
+        st.markdown(
+            "**What it is:** a live *what-if* tool. Each slider is one feature of a "
+            "single customer; together they describe one applicant.\n\n"
+            "**How to use it:**\n"
+            "1. Set the sliders to describe an applicant — or hit **🔎 Load a real "
+            "customer** to pull an actual record from the dataset.\n"
+            "2. The **Predict** tab instantly scores that customer, shows the risk "
+            "gauge, and explains *why* (SHAP + plain-English AI reason).\n"
+            "3. Move any slider to see the score react — e.g. drop *health score* and "
+            "watch risk climb.\n\n"
+            "**What it tells you:** the model's estimated probability that this "
+            "customer is **high-risk**, and which features pushed the score up or down. "
+            "The **Decision threshold** (above) sets the High/Low cut-off.")
 
     # ---- Load a real customer (must run before the sliders below) ----
     # A pending random pick updates the ID box before it is instantiated.
@@ -361,7 +507,8 @@ with tab1:
         if drivers:
             dd = pd.DataFrame(drivers, columns=["feature", "contribution"]).head(6)
             fig = px.bar(dd[::-1], x="contribution", y="feature", orientation="h",
-                         color="contribution", color_continuous_scale=["#0090DA", "#E4002B"],
+                         color="contribution",
+                         color_continuous_scale=[GREEN, "#DDE7EE", RISK],
                          color_continuous_midpoint=0)
             fig.update_layout(height=280, margin=dict(l=10, r=10, t=10, b=10),
                               coloraxis_showscale=False,
@@ -387,15 +534,16 @@ with tab1:
             st.markdown("#### 💧 SHAP waterfall — how we got to this score")
             st.caption("Starts at the average customer (base) and adds each feature's "
                        "contribution to reach this customer's log-odds. "
-                       "Red pushes risk **up**, blue pushes it **down**.")
+                       "Red pushes risk **up**, green pushes it **down**.")
             wf = shap_waterfall_fig(profile)
             if wf is not None:
                 st.plotly_chart(wf, use_container_width=True)
-                st.info(
-                    "**Reading the axis (log-odds):**  🟥 bars raise risk · 🟦 bars lower it. "
-                    "**0 ≈ a 50/50 coin-flip**; each **+1** multiplies the odds of high-risk by "
-                    "~2.7 (e¹), each **−1** divides them by ~2.7. The gauge above just converts "
-                    "the final log-odds into an easy percentage.")
+                met_callout(
+                    "<b>Reading the axis (log-odds):</b>  🟥 bars raise risk · 🟩 bars lower it. "
+                    "<b>0 ≈ a 50/50 coin-flip</b>; each <b>+1</b> multiplies the odds of high-risk "
+                    "by ~2.7 (e¹), each <b>−1</b> divides them by ~2.7. The gauge above just "
+                    "converts the final log-odds into an easy percentage.",
+                    bg="#EAF4FB", accent=PRIMARY)
         with w2:
             st.markdown("#### 📊 Where this customer ranks")
             strip, pct = percentile_strip_fig(prob)
@@ -502,10 +650,12 @@ with tab3:
     m3.metric("Over-flagged (FP)", f"{fp:,}")
     m4.metric("Cost-optimal threshold", f"{opt_t:.2f}",
               delta=f"{opt_t - threshold:+.2f} vs yours")
-    st.info(f"💡 With a **{cost_fn}:{cost_fp}** miss-to-over-flag cost ratio, the "
-            f"loss-minimising threshold is **{opt_t:.2f}**. Because a missed "
-            "high-risk customer hurts the **loss ratio** most, the optimum sits "
-            "**below** the default 0.50 - the model deliberately casts a wider net.")
+    met_callout(
+        f"💡 With a <b>{cost_fn}:{cost_fp}</b> miss-to-over-flag cost ratio, the "
+        f"loss-minimising threshold is <b>{opt_t:.2f}</b>. Because a missed high-risk "
+        "customer hurts the <b>loss ratio</b> most, the optimum sits <b>below</b> the "
+        "default 0.50 — the model deliberately casts a wider net.",
+        bg="#EAF7F0", accent=GREEN)
 
 # ---- Tab 4: Data story -----------------------------------------------------
 with tab4:
@@ -548,13 +698,13 @@ with tab5:
     st.markdown("#### 👨‍💻🧠 Ask the underwriting assistant")
     st.caption("Answers are computed from the real data in Python, then phrased "
                "by the AI - so the numbers are always exact (no hallucination). "
-               "Try: *“What's the high-risk rate for customers over 60?”* or "
-               "*“Which factors matter most?”*")
+               "Many questions also return a **chart or data table**. "
+               "Try the buttons below, or ask about segments, drivers or customers.")
 
     if "chat" not in st.session_state:
         st.session_state.chat = []
 
-    examples = ["What's the high-risk rate for customers over 60?",
+    examples = ["Give me the top 5 high-risk customers",
                 "Compare risk across policy types.",
                 "Which factors matter most and why?"]
     ec = st.columns(len(examples))
@@ -575,8 +725,14 @@ with tab5:
             st.markdown(q)
         with st.chat_message("assistant"):
             with st.spinner("Thinking…"):
-                ans, source = L.answer_question(load_data(), q)
+                ans, source = L.answer_question(scored_data(), q)
             st.markdown(ans)
+            # grounded visualization alongside the text answer
+            _kind, _obj = assistant_visual(scored_data(), q)
+            if _kind == "table":
+                st.dataframe(_obj, use_container_width=True, hide_index=True)
+            elif _kind == "chart":
+                st.plotly_chart(_obj, use_container_width=True)
             with st.expander("ℹ️ Source"):
                 st.caption(
                     "Live Groq LLM · Llama 3.3 70B" if source == "llm"
