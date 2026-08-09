@@ -17,6 +17,7 @@ template-based response so the app NEVER breaks during a live demo.
 from __future__ import annotations
 
 import os
+import re
 import textwrap
 
 MODEL = "llama-3.3-70b-versatile"
@@ -181,6 +182,27 @@ def compute_context(df, question: str) -> str:
         lines.append("Top model drivers (permutation importance): "
                      "age (largest), then health_score, then has_chronic_disease. "
                      "annual_income, bmi and past_claims_amount have ~zero effect.")
+
+    # specific / top-N customer requests (e.g. "give me top 5 high-risk customers")
+    list_kw = any(w in q for w in ["top", "highest", "riskiest", "list", "show",
+                                   "who", "which", "name", "give me"])
+    if "customer" in q and list_kw:
+        m = re.search(r"\d+", q)
+        n = min(int(m.group()) if m else 5, 20)
+        by_score = "risk_score" in df.columns
+        if by_score:
+            top = df.nlargest(n, "risk_score")
+        else:  # fall back to true labels ranked by worst health
+            top = df[df["is_high_risk"] == 1].nsmallest(n, "health_score")
+        lines.append(f"Top {len(top)} highest-risk customers "
+                     f"({'ranked by model risk score' if by_score else 'flagged high-risk'}):")
+        for _, r in top.iterrows():
+            tag = (f"{r['risk_score']*100:.0f}% model risk" if by_score else "flagged high-risk")
+            lines.append(
+                f"  #{int(r['customer_id'])}: age {int(r['age'])}, "
+                f"health {r['health_score']:.0f}, "
+                f"{'has chronic disease' if r['has_chronic_disease'] else 'no chronic disease'}, "
+                f"{r['policy_type']} policy — {tag}.")
 
     return "\n".join(lines)
 
