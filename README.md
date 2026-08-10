@@ -3,6 +3,19 @@
 Predicting `is_high_risk` for 60,000 insurance customers with an **explainable** model,
 plus a **self-serve Streamlit app** and a **GenAI underwriting assistant**.
 
+## Live App - [https://high-risk-metlife-pavelbodle.streamlit.app/](https://high-risk-metlife-pavelbodle.streamlit.app/)
+
+## Demo - [https://youtu.be/1oxJ_8DbsyA](https://youtu.be/1oxJ_8DbsyA)
+
+
+
+Links/URLs:  
+• Insights deck (PowerPoint): [https://docs.google.com/presentation/d/13SUXVt9VvJ1r4oezPSsB0XVJJzPzjJmA/edit?usp=sharing&ouid=107354397991416740237&rtpof=true&sd=true](https://docs.google.com/presentation/d/13SUXVt9VvJ1r4oezPSsB0XVJJzPzjJmA/edit?usp=sharing&ouid=107354397991416740237&rtpof=true&sd=true)   
+• Answers document (Q1 - Q4): [https://docs.google.com/document/d/1VqrnLD5ix5L2gpuhLne1tOKIsdf8pQiz/edit?usp=sharing&ouid=107354397991416740237&rtpof=true&sd=true](https://docs.google.com/document/d/1VqrnLD5ix5L2gpuhLne1tOKIsdf8pQiz/edit?usp=sharing&ouid=107354397991416740237&rtpof=true&sd=true) 
+
+• GitHub repository: [https://github.com/PavelBodle/metlife-high-risk-app](https://github.com/PavelBodle/metlife-high-risk-app)   
+• Demo video (walkthrough): [https://youtu.be/1oxJ_8DbsyA](https://youtu.be/1oxJ_8DbsyA)
+
 ---
 
 ## Headline results
