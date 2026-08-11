@@ -3,6 +3,10 @@
 Predicting `is_high_risk` for 60,000 insurance customers with an **explainable** model,
 plus a **self-serve Streamlit app** and a **GenAI underwriting assistant**.
 
+## Live App - https://high-risk-metlife-pavelbodle.streamlit.app/
+### GitHub repository: https://github.com/PavelBodle/metlife-high-risk-app 
+### Demo video (walkthrough): https://youtu.be/1oxJ_8DbsyA
+
 ---
 
 ## Headline results
